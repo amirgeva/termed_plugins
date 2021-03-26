@@ -3,6 +3,8 @@ import config
 from geom import Point
 from plugin import WindowPlugin
 from logger import logwrite
+from menus import Menu, fill_menu
+from dialogs.file_dialog import FileDialog
 
 
 class TreeNode:
@@ -70,7 +72,7 @@ class TreeNode:
             return None
         i = self._parent.index(self)
         n = self._parent.child_count()
-        if 0 < i:
+        if 0 < i < n:
             return self._parent.get_child(i - 1)
         return None
 
@@ -107,9 +109,17 @@ class DirTreePlugin(WindowPlugin):
             cfg['root'] = self._root
         self._tree = TreeNode('', True)
         self.scan(self._tree, self._root, 0)
+        self._total_rows = 0
         self._cur_y = -1
         if self._tree.child_count() > 0:
             self._cur_y = 0
+        self.create_menu()
+
+    def select_root(self, root):
+        self._root = root
+        config.get_section('dirtree')['root'] = root
+        self._tree = TreeNode('', True)
+        self.scan(self._tree, self._root, 0)
 
     def scan(self, tree, path: str, indent: int):
         spaces = ' ' * indent
@@ -155,7 +165,13 @@ class DirTreePlugin(WindowPlugin):
     def render(self):
         super().render()
         self._node_order = {}
-        self._render_node(self._tree, 0, -self._offset)
+        y = self._render_node(self._tree, 0, -self._offset)
+        self._total_rows = y + self._offset
+        spaces = ' ' * self._window.width()
+        while y < self._window.height():
+            self._window.set_cursor(0, y)
+            self._window.text(spaces, 1)
+            y = y + 1
 
     def on_focus(self):
         super().on_focus()
@@ -173,11 +189,21 @@ class DirTreePlugin(WindowPlugin):
                         break
 
     def action_move_down(self):
-        self._cur_y += 1
+        if self._cur_y < (self._total_rows - 1):
+            self._cur_y += 1
+            self._ensure_visible()
 
     def action_move_up(self):
         if self._cur_y > 0:
             self._cur_y -= 1
+            self._ensure_visible()
+
+    def _ensure_visible(self):
+        dy = self._cur_y - self._offset
+        h = self._window.height()
+        if dy < 0 or dy >= h:
+            self._offset = self._cur_y - h // 2
+            self.render()
 
     def action_enter(self):
         if self._cur_y in self._node_order:
@@ -203,8 +229,8 @@ class DirTreePlugin(WindowPlugin):
     def process_text_key(self, key: str):
         self._search_term += key
         results = self.dfs_search(self._tree, self._search_term)
-        results.sort(key=lambda node: node.get_name())
-        results.sort(key=lambda node: node.get_path(self._root).count('/'))
+        results.sort(key=lambda x: x.get_name())
+        results.sort(key=lambda x: x.get_path(self._root).count('/'))
         if results:
             res = results[0]
             res.expand_tree()
@@ -223,4 +249,24 @@ class DirTreePlugin(WindowPlugin):
             self.clear_search()
 
     def on_action(self, action: str):
+        super().on_action(action)
         self.clear_search()
+
+    def action_select_root(self):
+        d = FileDialog('SelDir')
+        config.get_app().set_focus(d)
+        config.get_app().event_loop(True)
+        r = d.get_result()
+        if r == 'Select':
+            self.select_root(d.directory.text)
+
+    def create_menu(self):
+        desc = [('&File', [('&Root Dir   Ctrl+O', self, 'select_root'),
+                           ('&Makefile         ', self, 'select_makefile')
+                           ]),
+                ('&Options', [('&General', self, 'general_settings')
+                              ]),
+                ]
+        bar = Menu('')
+        fill_menu(bar, desc)
+        self.set_menu(bar)
