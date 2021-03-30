@@ -1,4 +1,5 @@
 import os
+import subprocess
 import config
 from geom import Point
 from plugin import WindowPlugin
@@ -115,11 +116,23 @@ class DirTreePlugin(WindowPlugin):
             self._cur_y = 0
         self.create_menu()
 
+    def select_makefile(self, path):
+        root = self.scan_makefile(path)
+        if root:
+            self._root = root
+
     def select_root(self, root):
         self._root = root
         config.get_section('dirtree')['root'] = root
         self._tree = TreeNode('', True)
         self.scan(self._tree, self._root, 0)
+
+    def scan_makefile(self, path):
+        root = os.path.dirname(path)
+        try:
+            subprocess.run(['make', '-qp'], capture_output=True, check=True)
+        except subprocess.CalledProcessError:
+            return ''
 
     def scan(self, tree, path: str, indent: int):
         spaces = ' ' * indent
@@ -259,6 +272,14 @@ class DirTreePlugin(WindowPlugin):
         r = d.get_result()
         if r == 'Select':
             self.select_root(d.directory.text)
+
+    def action_select_makefile(self):
+        d = FileDialog('Load')
+        config.get_app().set_focus(d)
+        config.get_app().event_loop(True)
+        r = d.get_result()
+        if r == 'Load':
+            self.select_makefile(d.get_path())
 
     def create_menu(self):
         desc = [('&File', [('&Root Dir   Ctrl+O', self, 'select_root'),
