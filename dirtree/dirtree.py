@@ -8,6 +8,21 @@ from menus import Menu, fill_menu
 from dialogs.file_dialog import FileDialog
 
 
+def get_makefile_targets(directory: str):
+    target_pattern = r'\A(\w+):'
+    targets = []
+    try:
+        res = subprocess.run(['make', '-qp'], capture_output=True, check=False, cwd=directory)
+        for line in res.stdout.decode('utf-8').split('\n'):
+            m = re.match(target_pattern, line)
+            if m:
+                target = m.groups()[0]
+                targets.append(target)
+    except subprocess.CalledProcessError:
+        return []
+    return targets
+
+
 class TreeNode:
     def __init__(self, name: str, is_dir: bool, parent=None):
         self._name = name
@@ -129,10 +144,6 @@ class DirTreePlugin(WindowPlugin):
 
     def scan_makefile(self, path):
         root = os.path.dirname(path)
-        try:
-            subprocess.run(['make', '-qp'], capture_output=True, check=True)
-        except subprocess.CalledProcessError:
-            return ''
 
     def scan(self, tree, path: str, indent: int):
         spaces = ' ' * indent
