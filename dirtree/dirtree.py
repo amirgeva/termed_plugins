@@ -1,99 +1,12 @@
 import os
-import subprocess
 import config
 from geom import Point
 from plugin import WindowPlugin
 from logger import logwrite
 from menus import Menu, fill_menu
 from dialogs.file_dialog import FileDialog
-
-
-class TreeNode:
-    def __init__(self, name: str, is_dir: bool, parent=None):
-        self._name = name
-        self._parent = parent
-        if is_dir:
-            self._name += "/"
-        self._expanded = False
-        self._is_dir = is_dir
-        self._children = []
-        self._current = 0
-
-    def __iter__(self):
-        self._current = 0
-        return self
-
-    def __next__(self):
-        if self._current < len(self._children):
-            self._current += 1
-            return self._children[self._current - 1]
-        raise StopIteration
-
-    def get_parent(self):
-        return self._parent
-
-    def child_count(self) -> int:
-        return len(self._children)
-
-    def get_child(self, index: int):
-        return self._children[index]
-
-    def get_name(self) -> str:
-        return self._name
-
-    def is_dir(self) -> bool:
-        return self._is_dir
-
-    def is_expanded(self) -> bool:
-        return self._expanded
-
-    def toggle_expand(self):
-        self._expanded = not self._expanded
-
-    def set_expanded(self, state: bool):
-        self._expanded = state
-
-    def expand_tree(self):
-        node = self
-        while node.get_parent():
-            node = node.get_parent()
-            node.set_expanded(True)
-
-    def add_child(self, node):
-        self._children.append(node)
-
-    def index(self, node) -> int:
-        for i in range(self.child_count()):
-            if self._children[i] == node:
-                return i
-        return -1
-
-    def get_prev_sibling(self):
-        if not self._parent:
-            return None
-        i = self._parent.index(self)
-        n = self._parent.child_count()
-        if 0 < i < n:
-            return self._parent.get_child(i - 1)
-        return None
-
-    def get_next_sibling(self):
-        if not self._parent:
-            return None
-        i = self._parent.index(self)
-        n = self._parent.child_count()
-        if 0 <= i < (n - 1):
-            return self._parent.get_child(i + 1)
-        return None
-
-    def get_path(self, root) -> str:
-        parts = []
-        cur_node = self
-        while cur_node.get_parent() is not None:
-            parts.append(cur_node.get_name())
-            cur_node = cur_node.get_parent()
-        parts = list(reversed(parts))
-        return os.path.join(root, *parts)
+from .treenode import TreeNode, convert_tree
+from .cmake_utils import scan_cmake
 
 
 class DirTreePlugin(WindowPlugin):
@@ -116,23 +29,20 @@ class DirTreePlugin(WindowPlugin):
             self._cur_y = 0
         self.create_menu()
 
-    def select_makefile(self, path):
-        root = self.scan_makefile(path)
-        if root:
-            self._root = root
-
     def select_root(self, root):
         self._root = root
-        config.get_section('dirtree')['root'] = root
-        self._tree = TreeNode('', True)
-        self.scan(self._tree, self._root, 0)
+        makefile_path = os.path.join(root, 'Makefile')
+        using_makefile = False
+        if os.path.exists(makefile_path):
+            using_makefile = self.select_makefile(root, makefile_path)
+        if not using_makefile:
+            config.get_section('dirtree')['root'] = root
+            self._tree = TreeNode('', True)
+            self.scan(self._tree, self._root, 0)
 
-    def scan_makefile(self, path):
-        root = os.path.dirname(path)
-        try:
-            subprocess.run(['make', '-qp'], capture_output=True, check=True)
-        except subprocess.CalledProcessError:
-            return ''
+    def select_makefile(self, build_folder: str, path: str):
+        self._root, tree = scan_cmake(build_folder, path)
+        self._tree = convert_tree(tree)
 
     def scan(self, tree, path: str, indent: int):
         spaces = ' ' * indent
@@ -273,17 +183,8 @@ class DirTreePlugin(WindowPlugin):
         if r == 'Select':
             self.select_root(d.directory.text)
 
-    def action_select_makefile(self):
-        d = FileDialog('Load')
-        config.get_app().set_focus(d)
-        config.get_app().event_loop(True)
-        r = d.get_result()
-        if r == 'Load':
-            self.select_makefile(d.get_path())
-
     def create_menu(self):
-        desc = [('&File', [('&Root Dir   Ctrl+O', self, 'select_root'),
-                           ('&Makefile         ', self, 'select_makefile')
+        desc = [('&File', [('&Root Dir   Ctrl+O', self, 'select_root')
                            ]),
                 ('&Options', [('&General', self, 'general_settings')
                               ]),
