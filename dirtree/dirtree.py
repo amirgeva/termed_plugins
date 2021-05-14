@@ -1,5 +1,6 @@
 import os
 import config
+import logger
 from geom import Point
 from plugin import WindowPlugin
 from logger import logwrite
@@ -14,15 +15,17 @@ class DirTreePlugin(WindowPlugin):
         super().__init__(Point(20, 0))
         self._offset = 0
         self._search_term = ''
+        self._search_results = []
+        self._result_index = 0
         self._node_order = {}
         cfg = config.get_section('dirtree')
         self._root = os.getcwd()
         if 'root' in cfg:
-            self._root = cfg['root']
+            self.select_root(cfg['root'])
         else:
             cfg['root'] = self._root
-        self._tree = TreeNode('', True)
-        self.scan(self._tree, self._root, 0)
+        # self._tree = TreeNode('', True)
+        # self.scan(self._tree, self._root, 0)
         self._total_rows = 0
         self._cur_y = -1
         if self._tree.child_count() > 0:
@@ -42,10 +45,13 @@ class DirTreePlugin(WindowPlugin):
 
     def select_makefile(self, build_folder: str, path: str):
         self._root, tree = scan_cmake(build_folder, path)
+        logger.logwrite(f'Makefile Tree:\n{tree}\n------------------------------\n')
         self._tree = convert_tree(tree)
+        return True
 
     def scan(self, tree, path: str, indent: int):
         spaces = ' ' * indent
+        entry: os.DirEntry
         for entry in os.scandir(path):
             if not entry.name.startswith('.'):
                 if entry.is_dir(follow_symlinks=False):
@@ -151,11 +157,15 @@ class DirTreePlugin(WindowPlugin):
 
     def process_text_key(self, key: str):
         self._search_term += key
-        results = self.dfs_search(self._tree, self._search_term)
-        results.sort(key=lambda x: x.get_name())
-        results.sort(key=lambda x: x.get_path(self._root).count('/'))
-        if results:
-            res = results[0]
+        self._search_results = self.dfs_search(self._tree, self._search_term)
+        self._search_results.sort(key=lambda x: x.get_name())
+        self._search_results.sort(key=lambda x: x.get_path(self._root).count('/'))
+        self._result_index = 0
+        self.show_search_result()
+
+    def show_search_result(self):
+        if self._search_results:
+            res = self._search_results[self._result_index]
             res.expand_tree()
             for y in sorted(self._node_order.keys()):
                 node = self._node_order.get(y)
@@ -163,11 +173,18 @@ class DirTreePlugin(WindowPlugin):
                     self._cur_y = y
                     break
 
+    def action_find_replace_next(self):
+        if self._search_results:
+            self._result_index = (self._result_index + 1) % len(self._search_results)
+            self.show_search_result()
+
     def process_key(self, key: str):
         if len(key) == 1:
             code = ord(key)
             if 32 <= code < 127:
                 self.process_text_key(key)
+            else:
+                self.clear_search()
         else:
             self.clear_search()
 
