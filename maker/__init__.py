@@ -1,4 +1,4 @@
-from maker_plugin import MakerPlugin
+from .maker_plugin import MakerPlugin
 
 def create():
     return MakerPlugin()
