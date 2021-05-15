@@ -2,7 +2,7 @@ import os
 
 
 class TreeNode:
-    def __init__(self, name: str, is_dir: bool, parent=None):
+    def __init__(self, name: str, is_dir: bool, parent):
         self._name = name
         self._parent = parent
         if is_dir:
@@ -93,15 +93,15 @@ def convert_node(node: TreeNode, subtree: dict):
     for name in sorted(subtree.keys()):
         value = subtree.get(name)
         if isinstance(value, dict):
-            child = TreeNode(name, True)
+            child = TreeNode(name, True, node)
             node.add_child(child)
             convert_node(child, value)
         else:
-            child = TreeNode(name, False)
+            child = TreeNode(name, False, node)
             node.add_child(child)
 
 
 def convert_tree(tree):
-    node = TreeNode('', True)
+    node = TreeNode('', True, None)
     convert_node(node, tree)
     return node

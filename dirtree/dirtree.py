@@ -18,14 +18,12 @@ class DirTreePlugin(WindowPlugin):
         self._search_results = []
         self._result_index = 0
         self._node_order = {}
-        cfg = config.get_section('dirtree')
         self._root = os.getcwd()
-        if 'root' in cfg:
-            self.select_root(cfg['root'])
-        else:
-            cfg['root'] = self._root
-        # self._tree = TreeNode('', True)
-        # self.scan(self._tree, self._root, 0)
+        self._tree = TreeNode('', True, None)
+        self.scan(self._tree, self._root, 0)
+        self._root = config.get_value('root')
+        if self._root:
+            self.select_root(self._root)
         self._total_rows = 0
         self._cur_y = -1
         if self._tree.child_count() > 0:
@@ -39,8 +37,7 @@ class DirTreePlugin(WindowPlugin):
         if os.path.exists(makefile_path):
             using_makefile = self.select_makefile(root, makefile_path)
         if not using_makefile:
-            config.get_section('dirtree')['root'] = root
-            self._tree = TreeNode('', True)
+            self._tree = TreeNode('', True, None)
             self.scan(self._tree, self._root, 0)
 
     def select_makefile(self, build_folder: str, path: str):
@@ -135,7 +132,10 @@ class DirTreePlugin(WindowPlugin):
             self.render()
 
     def action_enter(self):
-        if self._cur_y in self._node_order:
+        if self._search_term:
+            self.perform_search()
+            self._search_term = ''
+        elif self._cur_y in self._node_order:
             cur_node = self._node_order.get(self._cur_y)
             if cur_node.is_dir():
                 cur_node.toggle_expand()
@@ -157,6 +157,8 @@ class DirTreePlugin(WindowPlugin):
 
     def process_text_key(self, key: str):
         self._search_term += key
+
+    def perform_search(self):
         self._search_results = self.dfs_search(self._tree, self._search_term)
         self._search_results.sort(key=lambda x: x.get_name())
         self._search_results.sort(key=lambda x: x.get_path(self._root).count('/'))
@@ -167,6 +169,7 @@ class DirTreePlugin(WindowPlugin):
         if self._search_results:
             res = self._search_results[self._result_index]
             res.expand_tree()
+            self.render()
             for y in sorted(self._node_order.keys()):
                 node = self._node_order.get(y)
                 if node is res:
@@ -198,6 +201,7 @@ class DirTreePlugin(WindowPlugin):
         config.get_app().event_loop(True)
         r = d.get_result()
         if r == 'Select':
+            config.set_value('root',d.directory.text)
             self.select_root(d.directory.text)
 
     def create_menu(self):
