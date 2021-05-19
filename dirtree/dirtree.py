@@ -42,6 +42,7 @@ class DirTreePlugin(WindowPlugin):
 
     def select_makefile(self, build_folder: str, path: str):
         self._root, tree = scan_cmake(build_folder, path)
+        config.set_value('source_root', self._root)
         logger.logwrite(f'Makefile Tree:\n{tree}\n------------------------------\n')
         self._tree = convert_tree(tree)
         return True
@@ -201,7 +202,7 @@ class DirTreePlugin(WindowPlugin):
         config.get_app().event_loop(True)
         r = d.get_result()
         if r == 'Select':
-            config.set_value('root',d.directory.text)
+            config.set_value('root', d.directory.text)
             self.select_root(d.directory.text)
 
     def create_menu(self):
